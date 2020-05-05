@@ -15,7 +15,8 @@ public class TouchControls : MonoBehaviour {
 
     void Update() {
 
-        if (Input.touchCount < 1) return;
+#if UNITY_IOS || UNITY_ANDROID
+        if (Input.touchCount > 0) return;
 
         Touch touch = Input.touches[0];
 
@@ -24,14 +25,7 @@ public class TouchControls : MonoBehaviour {
             // Store time that touch began.
             TouchTime = Time.time;
 
-            // Fire ray on tap and store touched object.
-            RaycastHit hit;
-            Ray ray = Camera.main.ScreenPointToRay(touch.position);
-            if (Physics.Raycast(ray, out hit)) {
-
-                TouchedObject = hit.collider.gameObject;
-                Debug.Log(hit.collider.gameObject.name);
-            }
+            RayCast();
         }
 
         // Don't do interactions if there is nothing to interact with.
@@ -41,8 +35,7 @@ public class TouchControls : MonoBehaviour {
         if (!isPressing && touch.phase == TouchPhase.Stationary && Time.time - TouchTime > HoverTimer) {
             
             isPressing = true;
-            
-            TouchedObject.SendMessage("Press", true, SendMessageOptions.DontRequireReceiver);
+            LongPress(TouchedObject, true);
         }
 
         // This is still a long press, but in a different location.
@@ -56,12 +49,9 @@ public class TouchControls : MonoBehaviour {
 
                 obj = hit.collider.gameObject;
                 if (obj != TouchedObject) {
-                    TouchedObject.SendMessage("Press", false, SendMessageOptions.DontRequireReceiver);
-
-                    obj.SendMessage("Press", true, SendMessageOptions.DontRequireReceiver);
-
+                    LongPress(TouchedObject, false);
+                    LongPress(obj, true);
                     TouchedObject = obj;
-
                     Debug.Log("Updated popup to: " + hit.collider.gameObject.name);
                 }
             }
@@ -70,17 +60,109 @@ public class TouchControls : MonoBehaviour {
         // Touch has ended.
         if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled) {
 
+            Release();
+
             // Tap
             if (Time.time - TouchTime <= HoverTimer) {
-                TouchedObject.SendMessage("Tap", SendMessageOptions.DontRequireReceiver);
+                Tap(TouchedObject);
             }
 
             // Reset.
-            TouchedObject.SendMessage("Press", false, SendMessageOptions.DontRequireReceiver);
+            LongPress(TouchedObject, false);
             TouchTime = 0f;
             TouchedObject = null;
             isPressing = false;
         }
+
+#endif
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR
+        if (Input.GetMouseButtonDown(0)) {
+            RayCast();
+
+        if (TouchedObject == null) return;
+
+        // Store time that touch began.
+            TouchTime = Time.time;
+
+               // This is a long press.
+        if (!isPressing && Time.time - TouchTime > HoverTimer) {
+            
+            isPressing = true;
+            LongPress(TouchedObject, true);
+        } 
+        
+
+        if (Input.GetMouseButtonUp(0)) {
+            Release();
+
+        if (Time.time - TouchTime <= HoverTimer) {
+                Tap(TouchedObject);
+            }
+
+            // Reset.
+            LongPress(TouchedObject, false);
+            TouchTime = 0f;
+            TouchedObject = null;
+            isPressing = false;
+
+
+        }
+#endif
+
+
     }
+
+
+
+    private void Tap(GameObject obj) {
+        if (IsPointerOverGameObject()) return;
+        obj.SendMessage("Tap", SendMessageOptions.DontRequireReceiver);
+    }
+
+    private void Release(GameObject obj) {
+        if (IsPointerOverGameObject()) return;
+        obj.SendMessage("Release", SendMessageOptions.DontRequireReceiver);
+    }
+
+    private void LongPress(GameObject obj, bool sameLocation) {
+        if (IsPointerOverGameObject()) return;
+        obj.SendMessage("LongPress", sameLocation, SendMessageOptions.DontRequireReceiver);
+    }
+
+    /// <summary>
+    /// Fire ray and store touched object.
+    /// </summary>
+    private void RayCast() {
+        // 
+        RaycastHit hit;
+#if UNITY_IOS || UNITY_ANDROID
+        Ray ray = Camera.main.ScreenPointToRay(touch.position);
+#endif
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+
+#endif
+        if (Physics.Raycast(ray, out hit)) {
+
+            TouchedObject = hit.collider.gameObject;
+            Debug.Log(hit.collider.gameObject.name);
+        }
+    }
+
+    private bool IsPointerOverGameObject() {
+        if (EventSystem.current.IsPointerOverGameObject()) {
+            return true;
+        }
+
+        if (Input.touchCount > 0 && Input.touches[0].phase == TouchPhase.Began) {
+            if (EventSystem.current.IsPointerOverGameObject(Input.touches[0].fingerId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 
 }
